@@ -1,0 +1,155 @@
+{
+  "brand": "telpo",
+  "links": [
+    {
+      "category": "products",
+      "url": "https://www.telpo.com.cn/products"
+    }
+  ],
+  "output": {
+    "root_dir": "output",
+    "save_per_link_files": false,
+    "save_combined_file": true,
+    "data_root_dir": "output/data",
+    "images_root_dir": "output/images"
+  },
+  "master_page": {
+    "type": "listing",
+    "selectors": {
+      "product_containers": [
+        "a.elementor-flip-box__layer.elementor-flip-box__back[href]"
+      ],
+      "fields": [
+        {
+          "key": "name",
+          "selectors": [
+            ".elementor-flip-box__layer__title",
+            "h3",
+            "h2",
+            "a[href]"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "description",
+          "selectors": [
+            ".elementor-flip-box__layer__description",
+            "p"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "listing_image_url",
+          "selectors": [
+            "img[data-lazy-src]",
+            "img[data-src]",
+            "img[src]"
+          ],
+          "mode": "attr",
+          "attr": "data-lazy-src",
+          "multiple": false,
+          "normalize_url": true
+        },
+        {
+          "key": "detail_url",
+          "selectors": [
+            "a[href]"
+          ],
+          "mode": "attr",
+          "attr": "href",
+          "multiple": false,
+          "normalize_url": true
+        }
+      ]
+    }
+  },
+  "details_page": {
+    "selectors": {
+      "product_name": [
+        {
+          "selector": [
+            "h1.product_title",
+            "h1",
+            ".elementor-heading-title"
+          ],
+          "mode": "text",
+          "multiple": false
+        }
+      ]
+    },
+    "extract": [
+      {
+        "key": "datasheet_links",
+        "mode": "links",
+        "selector": "a[href]",
+        "include_if_matches": [
+          "\\.pdf",
+          "datasheet",
+          "brochure"
+        ],
+        "normalize_url": true
+      },
+      {
+        "key": "feature_paragraphs",
+        "container_selector": "div.product, main",
+        "mode": "paired_headings_paragraphs",
+        "title_selector": "h2, h3, .elementor-heading-title",
+        "text_selector": "p"
+      },
+      {
+        "key": "specifications",
+        "mode": "keyed_sections",
+        "container_selector": "div.product, main",
+        "section_selector": "table, div[class*='spec'], div[class*='parameter'], li",
+        "title_selector": "h2, h3, h4, strong, .elementor-heading-title",
+        "value_selectors": [
+          {
+            "mode": "table",
+            "selector": "table"
+          },
+          {
+            "mode": "list",
+            "selector": "li, p"
+          }
+        ],
+        "rules": {
+          "skip_if_no_values": true
+        }
+      }
+    ]
+  },
+  "images": {
+    "download": true,
+    "folders": {
+      "path_folder": ""
+    },
+    "naming": "img_{brand}_{product_name_sanitized}_{index}",
+    "sources": [
+      {
+        "key": "primary_image",
+        "container_selectors": [
+          ".elementor",
+          "div.product",
+          "main"
+        ],
+        "image_selectors": [
+          "img[data-lazy-src]",
+          "img[data-src]",
+          "img[src]"
+        ],
+        "mode": "attr",
+        "attr": "data-lazy-src",
+        "multiple": true
+      }
+    ],
+    "allowed_extensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "avif"
+    ]
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "brand": "dspread",
+  "links": [
+    {
+      "category": "products",
+      "url": "https://www.dspread.com/products"
+    }
+  ],
+  "output": {
+    "root_dir": "output",
+    "save_per_link_files": false,
+    "save_combined_file": true,
+    "data_root_dir": "output/data",
+    "images_root_dir": "output/images"
+  },
+  "master_page": {
+    "type": "listing",
+    "selectors": {
+      "product_containers": [
+        ".swiper-box .item a[href]",
+        "a[href*='/android-smart-pos/'], a[href*='/mpos/'], a[href*='/pinpad/'], a[href*='/accessories/']"
+      ],
+      "fields": [
+        {
+          "key": "name",
+          "selectors": [
+            "a[href]",
+            "h3",
+            "h2",
+            ".title"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "description",
+          "selectors": [
+            "p",
+            ".text",
+            ".desc"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "listing_image_url",
+          "selectors": [
+            "img[src]",
+            "img[data-src]"
+          ],
+          "mode": "attr",
+          "attr": "src",
+          "multiple": false,
+          "normalize_url": true
+        },
+        {
+          "key": "detail_url",
+          "selectors": [
+            "a[href]"
+          ],
+          "mode": "attr",
+          "attr": "href",
+          "multiple": false,
+          "normalize_url": true
+        }
+      ]
+    }
+  },
+  "details_page": {
+    "selectors": {
+      "product_name": [
+        {
+          "selector": [
+            "section.inner-product-banner h1",
+            "h1"
+          ],
+          "mode": "text",
+          "multiple": false
+        }
+      ]
+    },
+    "extract": [
+      {
+        "key": "datasheet_links",
+        "mode": "links",
+        "selector": "a[href]",
+        "include_if_matches": [
+          "\\.pdf",
+          "datasheet",
+          "brochure"
+        ],
+        "normalize_url": true
+      },
+      {
+        "key": "specifications",
+        "mode": "keyed_sections",
+        "container_selector": "div.specs-box, section.inner-product-specs, body",
+        "section_selector": "table, li, div[class*='item'], div[class*='row']",
+        "title_selector": "h2, h3, h4, strong, .name, .title",
+        "value_selectors": [
+          {
+            "mode": "table",
+            "selector": "table"
+          },
+          {
+            "mode": "list",
+            "selector": "li, p"
+          }
+        ],
+        "rules": {
+          "skip_if_no_values": true
+        }
+      },
+      {
+        "key": "feature_paragraphs",
+        "container_selector": "section.inner-product-banner, section.inner-product-classify, section.inner-product-display, div.product-box",
+        "mode": "paired_headings_paragraphs",
+        "title_selector": "h2, h3",
+        "text_selector": "p"
+      }
+    ]
+  },
+  "images": {
+    "download": true,
+    "folders": {
+      "path_folder": ""
+    },
+    "naming": "img_{brand}_{product_name_sanitized}_{index}",
+    "sources": [
+      {
+        "key": "primary_image",
+        "container_selectors": [
+          "section.inner-product-banner",
+          "section.inner-product-display",
+          "div.product-box",
+          "div.specs-box"
+        ],
+        "image_selectors": [
+          "img[src]",
+          "img[data-src]"
+        ],
+        "mode": "attr",
+        "attr": "src",
+        "multiple": true
+      }
+    ],
+    "allowed_extensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "avif"
+    ]
+  }
+}

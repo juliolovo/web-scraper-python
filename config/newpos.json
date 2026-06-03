@@ -1,0 +1,156 @@
+{
+  "brand": "newpos",
+  "links": [
+    {
+      "category": "products",
+      "url": "https://www.newpostech.com/pro"
+    }
+  ],
+  "output": {
+    "root_dir": "output",
+    "save_per_link_files": false,
+    "save_combined_file": true,
+    "data_root_dir": "output/data",
+    "images_root_dir": "output/images"
+  },
+  "master_page": {
+    "type": "listing",
+    "selectors": {
+      "product_containers": [
+        "a[href^='/sp/'][href$='.html'], a[href^='/wp/'][href$='.html'], a[href^='/pp/'][href$='.html'], a[href^='/cs/'][href$='.html'], a[href^='/base/'][href$='.html'], a[href^='/se/'][href$='.html']"
+      ],
+      "fields": [
+        {
+          "key": "name",
+          "selectors": [
+            "a[href]",
+            "h3",
+            "h2",
+            ".tit",
+            ".title"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "description",
+          "selectors": [
+            "p",
+            ".txt",
+            ".desc"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "listing_image_url",
+          "selectors": [
+            "img[src]",
+            "img[data-src]"
+          ],
+          "mode": "attr",
+          "attr": "src",
+          "multiple": false,
+          "normalize_url": true
+        },
+        {
+          "key": "detail_url",
+          "selectors": [
+            "a[href]"
+          ],
+          "mode": "attr",
+          "attr": "href",
+          "multiple": false,
+          "normalize_url": true
+        }
+      ]
+    }
+  },
+  "details_page": {
+    "selectors": {
+      "product_name": [
+        {
+          "selector": [
+            "h1",
+            "h2",
+            ".pro_title",
+            ".title"
+          ],
+          "mode": "text",
+          "multiple": false
+        }
+      ]
+    },
+    "extract": [
+      {
+        "key": "datasheet_links",
+        "mode": "links",
+        "selector": "a[href]",
+        "include_if_matches": [
+          "\\.pdf",
+          "datasheet",
+          "brochure"
+        ],
+        "normalize_url": true
+      },
+      {
+        "key": "specifications",
+        "mode": "keyed_sections",
+        "container_selector": "div.procp, div.prodp, div[class*='spec'], div[class*='param'], body",
+        "section_selector": "li, table, div[class*='item'], div[class*='list']",
+        "title_selector": "h2, h3, h4, strong, .tit, .title",
+        "value_selectors": [
+          {
+            "mode": "list",
+            "selector": "p, li"
+          },
+          {
+            "mode": "table",
+            "selector": "table"
+          }
+        ],
+        "rules": {
+          "skip_if_no_values": true
+        }
+      },
+      {
+        "key": "feature_paragraphs",
+        "container_selector": "div.prodp, body",
+        "mode": "paired_headings_paragraphs",
+        "title_selector": "h2, h3, h4",
+        "text_selector": "p"
+      }
+    ]
+  },
+  "images": {
+    "download": true,
+    "folders": {
+      "path_folder": ""
+    },
+    "naming": "img_{brand}_{product_name_sanitized}_{index}",
+    "sources": [
+      {
+        "key": "primary_image",
+        "container_selectors": [
+          "div.procp",
+          "div.prodp",
+          "body"
+        ],
+        "image_selectors": [
+          "img[src]",
+          "img[data-src]"
+        ],
+        "mode": "attr",
+        "attr": "src",
+        "multiple": true
+      }
+    ],
+    "allowed_extensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "avif"
+    ]
+  }
+}

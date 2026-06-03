@@ -6,11 +6,15 @@
 - Instalar dependencias:
   - requests
   - beautifulsoup4
+  - playwright
 
 Puedes instalar las dependencias ejecutando:
 
 ```ps
-pip install requests beautifulsoup4
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:PLAYWRIGHT_BROWSERS_PATH = ".venv\ms-playwright"
+.\.venv\Scripts\python.exe -m playwright install chromium
 ```
 
 ## Configuración
@@ -34,17 +38,18 @@ Estructura importante del `config.json` actualizado:
 Desde la terminal, ejecuta:
 
 ```ps
-python main.py --config config.json
+.\.venv\Scripts\python.exe main.py --config config.json
 ```
 
--- El scraper descargará las secciones encontradas y las imágenes de cada página definida en `links`.
--- Los datos se guardarán en `output/{brand}/data/{brand}.json` (la clave principal contiene `pages`).
--- Si `output.save_per_link_files=true`, también se genera `output/{brand}/data/{category}.json` por cada URL.
--- Las imágenes se guardarán en `output/{brand}/images/`.
+- El scraper descargará las secciones encontradas, imágenes, documentos y media detectables de cada página definida en `links`.
+- Los datos se guardarán en `output/{brand}/data/{brand}.json` (la clave principal contiene `pages`).
+- Si `output.save_per_link_files=true`, también se genera `output/{brand}/data/{category}.json` por cada URL.
+- Las imágenes se guardarán en `output/{brand}/images/`.
 
 ## Notas
 
 - El scraper está diseñado para ser fácilmente extensible y mantenible.
 - Si necesitas scrapear otra marca, crea un nuevo archivo de configuración siguiendo la misma estructura.
-- El scraper no interpreta ni filtra el contenido: solo refleja la estructura HTML encontrada.
-- El código está preparado para agregar soporte a Playwright en el futuro.
+- El flujo intenta extraer datos en este orden: fuentes estructuradas/API descubiertas desde el HTML, HTML estático con BeautifulSoup y, si la config marca `requires_rendered_dom`, Playwright como fallback opcional.
+- La salida de productos usa campos comunes (`brand`, `source_url`, `category`, `type`, `name`, `model`, `url`, `images`, `documents`, `media`, `features`, `specs`, `variants`, `related_products`) y conserva el dato original en `raw_brand_data`.
+- Para usar el fallback de Playwright instala sus navegadores dentro del proyecto usando `PLAYWRIGHT_BROWSERS_PATH=.venv\ms-playwright`.

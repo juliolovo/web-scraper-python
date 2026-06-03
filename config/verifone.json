@@ -1,193 +1,233 @@
 {
-	"brand": "verifone",
-	"links": [
-		{
-			"category": "victa",
-			"url": "https://www.verifone.com/en-us/verifone-victa"
-		},
-		{
-			"category": "mPOS",
-			"url": "https://www.verifone.com/en-us/product-type/mpos"
-		}
-	],
-	"output": {
-		"root_dir": "output",
-		"save_per_link_files": true,
-		"save_combined_file": true
-	},
-	"master_page": {
-		"type": "listing",
-		"selectors": {
-			"product_containers": [
-				"div.hardware-products_item",
-				"div.hardware-card_wrap",
-				"div.hardware-products_list div.w-dyn-item",
-				"div.c-grid div.hardware-card_wrap"
-			],
-			"fields": [
-				{
-					"key": "name",
-					"selectors": [
-						"h3.hardware-card_content_title",
-						"h3.u-text-style-h4",
-						"h3"
-					],
-					"mode": "text",
-					"multiple": false
-				},
-				{
-					"key": "description",
-					"selectors": [
-						"p.hardware-card_content_description",
-						"p.u-text-style-small",
-						"p"
-					],
-					"mode": "text",
-					"multiple": false
-				},
-				{
-					"key": "listing_image_url",
-					"selectors": [
-						"div.hardware-card_img img",
-						"img.image.u-cover-absolute",
-						"img[src]"
-					],
-					"mode": "attr",
-					"attr": "src",
-					"multiple": false
-				},
-				{
-					"key": "detail_url",
-					"selectors": [
-						"a[href*='/hardware-product/']",
-						"a[href*='/en/us/hardware-product/']",
-						"a.clickable_link[href]",
-						"a[href*='go.verifone.com']"
-					],
-					"mode": "attr",
-					"attr": "href",
-					"multiple": false,
-					"normalize_url": true
-				}
-			]
-		}
-	},
-	"details_page": {
-		"selectors": {
-			"product_name": [
-				{
-					"selector": [
-						"div.rte-section-block h4 strong",
-						"h1"
-					],
-					"mode": "text",
-					"multiple": false
-				},
-				{
-					"selector": [
-						"h1",
-						"h2"
-					],
-					"mode": "text",
-					"multiple": false
-				}
-			]
-		},
-		"extract": [
-			{
-				"key": "specifications",
-				"mode": "keyed_sections",
-				"container_selector": "div.richtext_contain",
-				"section_selector": "div.rte-section-block",
-				"title_selector": "h4",
-				"value_selectors": [
-					{
-						"mode": "list",
-						"selector": "ul[role='list'] > li"
-					}
-				],
-				"rules": {
-					"skip_if_title_empty": true,
-					"skip_if_section_has_strong_only": true,
-					"skip_if_no_values": true
-				}
-			},
-			{
-				"key": "feature_cards",
-				"container_selector": "div.icon-cards_contain",
-				"mode": "repeat",
-				"item_selector": "div.icon-cards_item",
-				"fields": [
-					{
-						"key": "title",
-						"selector": "h3",
-						"mode": "text",
-						"multiple": false
-					},
-					{
-						"key": "text",
-						"selector": "p",
-						"mode": "text",
-						"multiple": false
-					}
-				],
-				"rules": {
-					"drop_items_if_title_empty": true
-				}
-			},
-			{
-				"key": "feature_paragraphs",
-				"container_selector": "div.triple-features_content div.u-rich-text_loose",
-				"mode": "pairs",
-				"pair_title_selector": "h3",
-				"pair_text_selector": "p"
-			}
-		]
-	},
-	"images": {
-		"download": true,
-		"folders": {
-			"path_folder": ""
-		},
-		"naming": "img_{brand}_{product_name_sanitized}_{index}",
-		"sources": [
-			{
-				"key": "primary_image",
-				"container_selectors": [
-					"div.triple-features_media",
-					"div.hardware-card_img",
-					"figure.w-richtext-figure-type-image"
-				],
-				"image_selectors": [
-					"img",
-					"img[src]",
-					"img[data-src]"
-				],
-				"mode": "attr",
-				"attr": "src",
-				"multiple": true
-			},
-			{
-				"key": "specs_figure_images",
-				"container_selectors": [
-					"figure.w-richtext-figure-type-image",
-					"div.richtext_contain"
-				],
-				"image_selectors": [
-					"img",
-					"img[src]"
-				],
-				"mode": "attr",
-				"attr": "src",
-				"multiple": true
-			}
-		],
-		"allowed_extensions": [
-			"jpg",
-			"jpeg",
-			"png",
-			"webp",
-			"avif"
-		]
-	}
+  "brand": "verifone",
+  "links": [
+    {
+      "category": "products",
+      "url": "https://www.verifone.com/en-us/products"
+    }
+  ],
+  "output": {
+    "root_dir": "output",
+    "save_per_link_files": false,
+    "save_combined_file": true,
+    "data_root_dir": "output/data",
+    "images_root_dir": "output/images"
+  },
+  "master_page": {
+    "type": "listing",
+    "selectors": {
+      "product_containers": [
+        "div.hardware-products_item",
+        "div.hardware-card_wrap",
+        "div.hardware-products_list div.w-dyn-item",
+        "div.c-grid div.hardware-card_wrap"
+      ],
+      "fields": [
+        {
+          "key": "name",
+          "selectors": [
+            "h3.hardware-card_content_title",
+            "h3.u-text-style-h4",
+            "h3"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "description",
+          "selectors": [
+            "p.hardware-card_content_description",
+            "p.u-text-style-small",
+            "p"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "key": "listing_image_url",
+          "selectors": [
+            "div.hardware-card_img img",
+            "img.image.u-cover-absolute",
+            "img[src]"
+          ],
+          "mode": "attr",
+          "attr": "src",
+          "multiple": false
+        },
+        {
+          "key": "detail_url",
+          "selectors": [
+            "a[href*='/hardware-product/']",
+            "a[href*='/en/us/hardware-product/']",
+            "a.clickable_link[href]",
+            "a[href*='go.verifone.com']"
+          ],
+          "mode": "attr",
+          "attr": "href",
+          "multiple": false,
+          "normalize_url": true
+        }
+      ]
+    }
+  },
+  "details_page": {
+    "selectors": {
+      "product_name": [
+        {
+          "selector": [
+            "div.rte-section-block h4 strong",
+            "h1"
+          ],
+          "mode": "text",
+          "multiple": false
+        },
+        {
+          "selector": [
+            "h1",
+            "h2"
+          ],
+          "mode": "text",
+          "multiple": false
+        }
+      ]
+    },
+    "extract": [
+      {
+        "key": "specifications",
+        "mode": "keyed_sections",
+        "container_selector": "div.richtext_contain",
+        "section_selector": "div.rte-section-block",
+        "title_selector": "h4",
+        "value_selectors": [
+          {
+            "mode": "list",
+            "selector": "ul[role='list'] > li"
+          }
+        ],
+        "rules": {
+          "skip_if_title_empty": true,
+          "skip_if_section_has_strong_only": true,
+          "skip_if_no_values": true
+        }
+      },
+      {
+        "key": "feature_cards",
+        "container_selector": "div.icon-cards_contain",
+        "mode": "repeat",
+        "item_selector": "div.icon-cards_item",
+        "fields": [
+          {
+            "key": "title",
+            "selector": "h3",
+            "mode": "text",
+            "multiple": false
+          },
+          {
+            "key": "text",
+            "selector": "p",
+            "mode": "text",
+            "multiple": false
+          }
+        ],
+        "rules": {
+          "drop_items_if_title_empty": true
+        }
+      },
+      {
+        "key": "feature_paragraphs",
+        "container_selector": "div.triple-features_content div.u-rich-text_loose",
+        "mode": "pairs",
+        "pair_title_selector": "h3",
+        "pair_text_selector": "p"
+      },
+      {
+        "key": "asset_links",
+        "mode": "links",
+        "selector": "a[href]",
+        "include_if_matches": [
+          "\\.pdf",
+          "datasheet",
+          "data sheet",
+          "spec sheet",
+          "brochure"
+        ],
+        "normalize_url": true
+      },
+      {
+        "key": "media_links",
+        "mode": "links",
+        "selector": "a[href], video[src], source[src], iframe[src]",
+        "attrs": [
+          "href",
+          "src",
+          "data-src"
+        ],
+        "include_if_matches": [
+          "\\.mp4",
+          "\\.webm",
+          "\\.mov",
+          "youtube",
+          "vimeo",
+          "video"
+        ],
+        "exclude_if_matches": [
+          "youtube\\.com/channel",
+          "facebook",
+          "instagram",
+          "linkedin",
+          "tiktok",
+          "wechat",
+          "twitter",
+          "x\\.com/"
+        ],
+        "normalize_url": true
+      }
+    ]
+  },
+  "images": {
+    "download": true,
+    "folders": {
+      "path_folder": ""
+    },
+    "naming": "img_{brand}_{product_name_sanitized}_{index}",
+    "sources": [
+      {
+        "key": "primary_image",
+        "container_selectors": [
+          "div.triple-features_media",
+          "div.hardware-card_img",
+          "figure.w-richtext-figure-type-image"
+        ],
+        "image_selectors": [
+          "img",
+          "img[src]",
+          "img[data-src]"
+        ],
+        "mode": "attr",
+        "attr": "src",
+        "multiple": true
+      },
+      {
+        "key": "specs_figure_images",
+        "container_selectors": [
+          "figure.w-richtext-figure-type-image",
+          "div.richtext_contain"
+        ],
+        "image_selectors": [
+          "img",
+          "img[src]"
+        ],
+        "mode": "attr",
+        "attr": "src",
+        "multiple": true
+      }
+    ],
+    "allowed_extensions": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "avif"
+    ]
+  }
 }
