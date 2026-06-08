@@ -1,3 +1,4 @@
+"""Output rules and normalisation helpers applied to scraper instances."""
 import json
 import re
 from pathlib import Path
@@ -20,7 +21,10 @@ def apply_output_rules(scraper):
     elif getattr(scraper, "brand_slug", "") == "sunmi":
         scraper.log_file_slug = "sumni"
     else:
-        scraper.log_file_slug = getattr(scraper, "brand_slug", "") or _slugify(getattr(scraper, "brand", "brand"))
+        brand_slug = getattr(scraper, "brand_slug", "")
+        scraper.log_file_slug = brand_slug or _slugify(
+            getattr(scraper, "brand", "brand")
+        )
 
     _normalize_asset_buckets(scraper.run_log.setdefault("assets", {}))
 
@@ -28,7 +32,7 @@ def apply_output_rules(scraper):
     original_normalize_product = scraper.normalize_product_for_output
     original_save_output = scraper.save_output
 
-    def record_asset(self, kind, source_url, *args, **kwargs):
+    def record_asset(_self, kind, source_url, *args, **kwargs):
         return original_record_asset(_normalize_asset_kind(kind), source_url, *args, **kwargs)
 
     def save_execution_log(self):
@@ -44,7 +48,7 @@ def apply_output_rules(scraper):
             json.dump(self.run_log, file, ensure_ascii=False, indent=2)
         print(f"Execution log saved to {output_path}")
 
-    def save_output(self, pages, all_products):
+    def save_output(_self, pages, all_products):
         return original_save_output(
             _rename_media_keys(pages),
             _rename_media_keys(all_products),
@@ -54,10 +58,17 @@ def apply_output_rules(scraper):
         normalized = original_normalize_product(product, *args, **kwargs)
 
         if not normalized.get("specs"):
-            normalized["specs"] = normalized.get("specifications") or product.get("specifications") or product.get("specs")
+            normalized["specs"] = (
+                normalized.get("specifications")
+                or product.get("specifications")
+                or product.get("specs")
+            )
 
         legacy_images = []
-        for key in ("detail_images", "details_images", "image_details", "primary_image", "spec_figure_image"):
+        for key in (
+            "detail_images", "details_images", "image_details",
+            "primary_image", "spec_figure_image",
+        ):
             legacy_images.extend(_flatten_asset_values(normalized.get(key)))
         legacy_documents = []
         for key in ("document_links", "asset_links"):
@@ -106,7 +117,10 @@ def apply_output_rules(scraper):
 
         images = []
         images.extend(legacy_images)
-        for key in ("images", "detail_images", "details_images", "image_details", "primary_image", "spec_figure_image"):
+        for key in (
+            "images", "detail_images", "details_images",
+            "image_details", "primary_image", "spec_figure_image",
+        ):
             images.extend(_flatten_asset_values(product.get(key)))
         images.extend(_flatten_asset_values(normalized.get("images")))
         _set_clean_list(normalized, "images", images)
@@ -174,7 +188,11 @@ def apply_output_rules(scraper):
         _set_clean_dict_list(normalized, "variants")
         _set_clean_dict_list(normalized, "related_products")
 
-        normalized = {key: value for key, value in normalized.items() if value not in (None, "", [], {})}
+        normalized = {
+            key: value
+            for key, value in normalized.items()
+            if value not in (None, "", [], {})
+        }
         return _rename_media_keys(normalized)
 
     scraper.record_asset = MethodType(record_asset, scraper)
@@ -281,7 +299,10 @@ def _clean_dict_list(items):
                 continue
             compact[key] = value
         title = str(compact.get("title") or compact.get("name") or "").strip()
-        text = str(compact.get("text") or compact.get("value") or compact.get("description") or "").strip()
+        text = str(
+            compact.get("text") or compact.get("value")
+            or compact.get("description") or ""
+        ).strip()
         if title.lower().startswith("feature") and not text:
             continue
         if compact:
@@ -331,5 +352,5 @@ def _infer_category(scraper, product):
         return None
     try:
         return infer(product)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
