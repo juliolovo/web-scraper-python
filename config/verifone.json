@@ -11,7 +11,9 @@
     "save_per_link_files": false,
     "save_combined_file": true,
     "data_root_dir": "output/data",
-    "images_root_dir": "output/images"
+    "media_root_dir": "media",
+    "images_root_dir": "media/images",
+    "logs_root_dir": "logs_execution"
   },
   "master_page": {
     "type": "listing",
@@ -186,6 +188,7 @@
   },
   "images": {
     "download": true,
+    "max_output_per_product": 1,
     "folders": {
       "path_folder": ""
     },

@@ -1,4 +1,6 @@
 output/
+media/
+logs_execution/
 __pycache__/
 .venv/
 

@@ -58,18 +58,36 @@ class Scraper:
         self.brand = self.config['brand']
         output_cfg = self.config.get('output', {})
         self.output_root = output_cfg.get('root_dir') or 'output'
-        self.data_root = output_cfg.get('data_root_dir') or os.path.join(self.output_root, 'data')
-        self.images_root = output_cfg.get('images_root_dir') or os.path.join(self.output_root, 'images')
+        self.data_root = output_cfg.get('data_root_dir') or self.output_root
+        self.media_root = output_cfg.get('media_root_dir') or 'media'
+        self.images_root = output_cfg.get('images_root_dir') or os.path.join(self.media_root, 'images')
+        self.logs_root = output_cfg.get('logs_root_dir') or 'logs_execution'
         self.brand_root = self.get_brand_root(self.brand)
         self.data_dir = self.get_data_dir(self.brand)
         self.image_dir = self.get_images_dir(self.brand)
         ensure_dir(self.data_dir)
         ensure_dir(self.image_dir)
+        ensure_dir(self.get_logs_dir(self.brand))
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'Mozilla/5.0 (compatible; WebScraper/1.0)'})
         self._html_cache: Dict[str, str] = {}
+        self.current_product_context: Dict[str, Any] = {}
+        self._asset_log_seen = set()
+        self.run_log: Dict[str, Any] = {
+            'brand': self.brand,
+            'started_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+            'config': {'brand': self.brand},
+            'pages': [],
+            'assets': {
+                'images': [],
+                'documents': [],
+                'video': [],
+                'links': [],
+            },
+            'warnings': [],
+        }
 
-    def scrape(self):
+    def scrape(self, limit_products: Optional[int] = None):
         pages: List[Dict[str, Any]] = []
         all_products: List[Dict[str, Any]] = []
         save_per_link_files = self.normalize_truthy_flag(
@@ -97,7 +115,7 @@ class Scraper:
             print(f"[INFO] Page: {page_title}")
             page_category = self.resolve_category(page.get('category'), page_title)
             page_result: Dict[str, Any] = {
-                'url': page_url,
+                'source_url': page_url,
                 'page_title': page_title,
                 'category': page_category,
             }
@@ -128,6 +146,8 @@ class Scraper:
                             products = self.extract_listing_products(rendered_soup, page, page_category, page_url)
 
                 products = self.deduplicate_products(products)
+                if limit_products is not None:
+                    products = products[:max(0, int(limit_products))]
                 print(f"[INFO] Products found: {len(products)}")
 
                 if self.config.get('details_page'):
@@ -136,6 +156,20 @@ class Scraper:
                 products = self.normalize_products_for_output(products, page_category, page_url)
                 page_result['products'] = products
                 all_products.extend(products)
+                self.run_log['pages'].append({
+                    'source_url': page_url,
+                    'page_title': page_title,
+                    'category': page_category,
+                    'products_found': len(products),
+                    'products': [
+                        {
+                            'name': product.get('name'),
+                            'url': product.get('url'),
+                            'manufacturer_category': product.get('manufacturer_category') or product.get('category'),
+                        }
+                        for product in products
+                    ],
+                })
             else:
                 specifications = self.process_extract_rules(soup, self.config.get('extract', []))
                 image_blocks = self.config.get('images', [])
@@ -144,6 +178,7 @@ class Scraper:
                 images = self.process_image_blocks(soup, page_url, image_blocks)
                 page_result['specifications'] = specifications
                 page_result['images'] = images
+                self.run_log['pages'].append(page_result)
 
             pages.append(page_result)
             if save_per_link_files:
@@ -153,6 +188,7 @@ class Scraper:
         all_products = self.deduplicate_products(all_products)
         if save_combined_file:
             self.save_output(pages, all_products)
+        self.save_execution_log()
 
     def fetch_html(self, url: str, timeout: int = 20, retries: int = 3) -> Optional[str]:
         if not url:
@@ -624,7 +660,6 @@ class Scraper:
         page_category: str,
         page_url: str,
     ) -> Dict[str, Any]:
-        raw = deepcopy(product)
         name = self.normalize_text(product.get('product_name') or product.get('name'))
         detail_url = product.get('detail_url') or product.get('url')
         category = (
@@ -632,15 +667,11 @@ class Scraper:
             or product.get('category')
             or page_category
         )
+        if self.normalize_text(category).casefold() == 'products':
+            category = self.infer_manufacturer_category(product)
         product_type = product.get('product_type') or product.get('type') or category
 
-        features: Dict[str, Any] = {}
-        if product.get('features') not in (None, '', []):
-            features['items'] = product.get('features')
-        if product.get('feature_cards') not in (None, '', []):
-            features['cards'] = product.get('feature_cards')
-        if product.get('feature_paragraphs') not in (None, '', []):
-            features['paragraphs'] = product.get('feature_paragraphs')
+        features = self.clean_features(product)
 
         variants = (
             product.get('variants')
@@ -648,39 +679,152 @@ class Scraper:
             or product.get('product_variants')
             or []
         )
-        related_products = product.get('related_products') or product.get('related') or []
-        specs = product.get('specs') or product.get('specifications') or []
-        images = product.get('images') if isinstance(product.get('images'), dict) else {}
+        variants = self.clean_list_of_dicts(variants, required_any=('name', 'description'))
+        related_products = self.clean_list_of_dicts(product.get('related_products') or product.get('related') or [], required_any=('name', 'url'))
+        specs = self.clean_specs(product.get('specs') or product.get('specifications') or [])
+        images = self.flatten_images(product.get('images'))
+        max_images = self.config.get('images', {}).get('max_output_per_product') if isinstance(self.config.get('images'), dict) else None
+        if isinstance(max_images, int) and max_images > 0:
+            images = images[:max_images]
         documents = self.normalize_link_items(
             product.get('documents'),
             product.get('document_links'),
             product.get('datasheet_links'),
             product.get('asset_links'),
         )
-        media = self.normalize_link_items(
+        video = self.normalize_link_items(
             product.get('media'),
             product.get('media_links'),
             product.get('video_links'),
             product.get('detail_media_urls'),
         )
+        for document in documents:
+            self.record_asset('documents', document.get('url'), product_name=name, product_url=detail_url, source_page_url=detail_url, label=document.get('text'))
+        for video_item in video:
+            self.record_asset('video', video_item.get('url'), product_name=name, product_url=detail_url, source_page_url=detail_url, label=video_item.get('text'))
 
-        return {
+        item = {
             'brand': self.brand,
-            'source_url': product.get('source_url') or page_url,
-            'category': category,
-            'type': product_type,
+            'manufacturer_category': category,
+            'type': None if self.normalize_text(product_type).casefold() == 'products' else product_type,
             'name': name or None,
-            'model': product.get('model'),
+            'model': product.get('model') or name or None,
             'url': detail_url,
             'images': images,
             'documents': documents,
-            'media': media,
+            'video': video,
             'features': features,
             'specs': specs,
             'variants': variants,
             'related_products': related_products,
-            'raw_brand_data': raw,
         }
+        return {key: value for key, value in item.items() if value not in (None, '', [], {})}
+
+    def infer_manufacturer_category(self, product: Dict[str, Any]) -> str:
+        text = self.normalize_text(
+            f"{product.get('manufacturer_category', '')} {product.get('name', '')} {product.get('product_name', '')} {product.get('detail_url', '')}"
+        ).casefold()
+        if self.brand.casefold() in {'verifone', 'verifon'}:
+            if 'victa' in text:
+                return 'Verifone Victa'
+            if any(token in text for token in ('ux400', 'ux401', 'ux300', 'ux301', 'ux100', 'ux410', 'ux700')):
+                return 'Unattended'
+            if any(token in text for token in ('m450', 'm425', 'm400', 'm424', 'm440')):
+                return 'Multilane'
+            if any(token in text for token in ('p200', 'p400', 'p630')):
+                return 'Countertop PINpad'
+            if any(token in text for token in ('v200c', 'v400c', 't650c', 'v200t')):
+                return 'Countertop'
+            if any(token in text for token in ('v660p', 't650p', 't650m', 'e235', 'e280', 'e285', 'v400m')):
+                return 'mPOS'
+            if 'x990' in text:
+                return 'Integrated POS'
+        return self.resolve_category(product.get('category'), product.get('product_name') or product.get('name'))
+
+    def clean_features(self, product: Dict[str, Any]) -> Dict[str, Any]:
+        features: Dict[str, Any] = {}
+        items = self.clean_list_of_dicts(product.get('features') or [], required_any=('title', 'text', 'name'))
+        cards = self.clean_list_of_dicts(product.get('feature_cards') or [], required_any=('title', 'text'))
+        paragraphs = self.clean_list_of_dicts(product.get('feature_paragraphs') or [], required_any=('title', 'text'))
+        if items:
+            features['items'] = items
+        if cards:
+            features['cards'] = cards
+        if paragraphs:
+            features['paragraphs'] = paragraphs
+        return features
+
+    def clean_list_of_dicts(self, values: Any, required_any: Tuple[str, ...]) -> List[Dict[str, Any]]:
+        if not isinstance(values, list):
+            return []
+        out: List[Dict[str, Any]] = []
+        seen = set()
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            cleaned = {
+                key: self.normalize_text(val) if isinstance(val, str) else val
+                for key, val in value.items()
+                if val not in (None, '', [], {})
+            }
+            title = self.normalize_text(cleaned.get('title') or cleaned.get('name'))
+            text = self.normalize_text(cleaned.get('text') or cleaned.get('description'))
+            if re.fullmatch(r'feature\s*\d+', title, flags=re.IGNORECASE) and not text:
+                continue
+            if not any(cleaned.get(key) not in (None, '', [], {}) for key in required_any):
+                continue
+            sig = json.dumps(cleaned, sort_keys=True, ensure_ascii=False)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out.append(cleaned)
+        return out
+
+    def clean_specs(self, values: Any) -> List[Dict[str, Any]]:
+        if not isinstance(values, list):
+            return []
+        out: List[Dict[str, Any]] = []
+        seen = set()
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            title = self.normalize_text(value.get('title') or value.get('name') or value.get('variant'))
+            raw_values = value.get('values') if isinstance(value.get('values'), list) else value.get('items')
+            if raw_values is None and value.get('text'):
+                raw_values = [value.get('text')]
+            cleaned_values = [self.normalize_text(v) for v in (raw_values or []) if self.normalize_text(v)]
+            nested_specs = self.clean_specs(value.get('specs') or [])
+            if not title and not cleaned_values and not nested_specs:
+                continue
+            item: Dict[str, Any] = {}
+            if title:
+                item['title'] = title
+            if cleaned_values:
+                item['values'] = cleaned_values
+            if nested_specs:
+                item['specs'] = nested_specs
+            sig = json.dumps(item, sort_keys=True, ensure_ascii=False)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out.append(item)
+        return out
+
+    def flatten_images(self, images: Any) -> List[str]:
+        flattened: List[str] = []
+
+        def add(value: Any):
+            if isinstance(value, str) and value and value not in flattened:
+                flattened.append(value)
+            elif isinstance(value, list):
+                for item in value:
+                    add(item)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    add(item)
+
+        add(images)
+        return flattened
 
     def normalize_link_items(self, *values: Any) -> List[Dict[str, str]]:
         links: List[Dict[str, str]] = []
@@ -788,9 +932,14 @@ class Scraper:
             return
 
         print(f"[INFO] Detail: {detail_page_url}")
+        self.current_product_context = {
+            'name': product.get('product_name') or product.get('name'),
+            'url': detail_page_url,
+        }
         soup = self.fetch_soup(detail_page_url)
         if not soup:
             self.apply_listing_image_fallback(product, detail_page_url)
+            self.current_product_context = {}
             return
 
         self.apply_detail_soup(product, soup, detail_page_url)
@@ -805,6 +954,7 @@ class Scraper:
             self.apply_listing_image_fallback(product, detail_page_url)
         elif 'images' in product and not self.has_any_images(product.get('images', {})):
             product.pop('images', None)
+        self.current_product_context = {}
 
     def apply_detail_soup(self, product: Dict[str, Any], soup: BeautifulSoup, detail_page_url: str):
         structured_sources = self.discover_structured_sources(soup, detail_page_url)
@@ -881,6 +1031,16 @@ class Scraper:
         if download_image(listing_img_url, image_path):
             rel = os.path.relpath(image_path, '.').replace('\\', '/')
             product['images'] = {'primary_image': [rel]}
+            self.record_asset(
+                'images',
+                listing_img_url,
+                local_path=rel,
+                product_name=product.get('product_name'),
+                product_url=base_url,
+                source_page_url=base_url,
+                key='primary_image',
+                downloaded=True,
+            )
         else:
             product['images'] = {'primary_image': [listing_img_url]}
 
@@ -941,13 +1101,67 @@ class Scraper:
                 file_name = f"{safe_filename(base_name)}.{ext}"
                 image_path = os.path.join(out_dir, file_name)
                 if download_image(image_url, image_path):
-                    collected.append(os.path.relpath(image_path, '.').replace('\\', '/'))
+                    rel_path = os.path.relpath(image_path, '.').replace('\\', '/')
+                    collected.append(rel_path)
+                    self.record_asset(
+                        'images',
+                        image_url,
+                        local_path=rel_path,
+                        product_name=product_name,
+                        product_url=self.current_product_context.get('url'),
+                        source_page_url=self.current_product_context.get('url'),
+                        key=key,
+                        downloaded=True,
+                    )
                     image_index += 1
             else:
                 collected.append(image_url)
+                self.record_asset(
+                    'images',
+                    image_url,
+                    product_name=product_name,
+                    product_url=self.current_product_context.get('url'),
+                    source_page_url=self.current_product_context.get('url'),
+                    key=key,
+                    downloaded=False,
+                )
                 image_index += 1
 
         return {key: collected} if collected else {}
+
+    def record_asset(
+        self,
+        kind: str,
+        source_url: Optional[str],
+        local_path: Optional[str] = None,
+        product_name: Optional[str] = None,
+        product_url: Optional[str] = None,
+        source_page_url: Optional[str] = None,
+        key: Optional[str] = None,
+        label: Optional[str] = None,
+        downloaded: bool = False,
+    ):
+        if not source_url:
+            return
+        if kind == 'media':
+            kind = 'video'
+        bucket = kind if kind in self.run_log['assets'] else 'links'
+        entry = {
+            'product_name': self.normalize_text(product_name or self.current_product_context.get('name')),
+            'product_url': product_url or self.current_product_context.get('url'),
+            'source_page_url': source_page_url or self.current_product_context.get('url'),
+            'source_url': source_url,
+            'local_path': local_path,
+            'key': key,
+            'label': label,
+            'downloaded': downloaded,
+        }
+        entry = {k: v for k, v in entry.items() if v not in (None, '', [], {})}
+        sig = (bucket, entry.get('product_url'), entry.get('source_url'), entry.get('local_path'))
+        if sig in self._asset_log_seen:
+            return
+        self._asset_log_seen.add(sig)
+        self.run_log['assets'][bucket].append(entry)
 
     def normalize_truthy_flag(self, value: Any) -> bool:
         if isinstance(value, bool):
@@ -1461,9 +1675,28 @@ class Scraper:
                         if download_image(image_url, image_path):
                             rel = os.path.relpath(image_path, '.').replace('\\', '/')
                             collected.append(rel)
+                            self.record_asset(
+                                'images',
+                                image_url,
+                                local_path=rel,
+                                product_name=product_name,
+                                product_url=self.current_product_context.get('url'),
+                                source_page_url=base_url,
+                                key=key,
+                                downloaded=True,
+                            )
                             image_index += 1
                     else:
                         collected.append(image_url)
+                        self.record_asset(
+                            'images',
+                            image_url,
+                            product_name=product_name,
+                            product_url=self.current_product_context.get('url'),
+                            source_page_url=base_url,
+                            key=key,
+                            downloaded=False,
+                        )
                         image_index += 1
 
             if collected:
@@ -1535,6 +1768,9 @@ class Scraper:
             return os.path.join(self.get_brand_root(brand), str(images_folder))
         return os.path.join(self.images_root, safe_filename(brand))
 
+    def get_logs_dir(self, brand: str) -> str:
+        return self.logs_root
+
     # Aliases kept for parity with external naming in task notes.
     def getBrandRoot(self, brand: str) -> str:
         return self.get_brand_root(brand)
@@ -1544,6 +1780,9 @@ class Scraper:
 
     def getImagesDir(self, brand: str) -> str:
         return self.get_images_dir(brand)
+
+    def getLogsDir(self, brand: str) -> str:
+        return self.get_logs_dir(brand)
 
     def selector_candidates(self, selector_or_selectors: Any) -> List[str]:
         if isinstance(selector_or_selectors, str):
@@ -1764,18 +2003,23 @@ class Scraper:
         ensure_dir(os.path.dirname(out_path))
         data: Dict[str, Any] = {
             'brand': self.brand,
-            'pages': pages,
+            'products': products or [],
         }
-        include_flat_products = self.normalize_truthy_flag(
-            self.config.get('output', {}).get('include_flat_products', False)
-        )
-        if include_flat_products and products:
-            data['products'] = products
 
         with open(out_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
         print(f"[INFO] Output saved to {out_path}")
+
+    def save_execution_log(self):
+        self.run_log['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+        log_dir = self.get_logs_dir(self.brand)
+        ensure_dir(log_dir)
+        log_slug = self.config.get('log_file_slug') or self.brand
+        out_path = os.path.join(log_dir, f"{safe_filename(log_slug)}-log-execution.json")
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(self.run_log, f, indent=2, ensure_ascii=False)
+        print(f"[INFO] Execution log saved to {out_path}")
 
 
 class VerifoneScraper(Scraper):
@@ -1789,14 +2033,24 @@ class SunmiScraper(Scraper):
             return
 
         print(f"[INFO] Detail: {detail_page_url}")
+        self.current_product_context = {
+            'name': product.get('product_name') or product.get('name'),
+            'url': detail_page_url,
+        }
         soup = self.fetch_soup(detail_page_url)
         if not soup:
             self.apply_listing_image_fallback(product, detail_page_url)
+            self.current_product_context = {}
             return
 
         static_detail = self.extract_sunmi_static_detail(soup, detail_page_url, product)
         self.merge_nonempty_product_data(product, static_detail)
         self.apply_detail_soup(product, soup, detail_page_url)
+
+        if not product.get('specifications') and not product.get('specs'):
+            rendered_specs = self.extract_sunmi_rendered_specs(detail_page_url)
+            if rendered_specs:
+                product['specifications'] = rendered_specs
 
         detail_cfg = self.config.get('details_page', {})
         if self.requires_rendered_dom(detail_cfg) and not self.product_has_detail_content(product):
@@ -1806,6 +2060,73 @@ class SunmiScraper(Scraper):
 
         if not self.has_any_images(product.get('images', {})):
             self.apply_listing_image_fallback(product, detail_page_url)
+        self.current_product_context = {}
+
+    def extract_sunmi_rendered_specs(self, detail_page_url: str) -> List[Dict[str, Any]]:
+        local_playwright_browsers = os.path.join(os.getcwd(), '.venv', 'ms-playwright')
+        if not os.environ.get('PLAYWRIGHT_BROWSERS_PATH') and os.path.isdir(local_playwright_browsers):
+            os.environ['PLAYWRIGHT_BROWSERS_PATH'] = local_playwright_browsers
+
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception as e:
+            print(f"[WARN] Playwright unavailable for SUNMI specs {detail_page_url}: {e}")
+            return []
+
+        specs: List[Dict[str, Any]] = []
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(detail_page_url, wait_until='networkidle', timeout=60000)
+                section = page.locator("section[class*='SpecScreen_spec-screen']").first
+                if section.count() == 0:
+                    browser.close()
+                    return []
+
+                tabs = [
+                    self.normalize_text(text)
+                    for text in section.locator('.ant-tabs-tab-btn').all_inner_texts()
+                    if self.normalize_text(text)
+                ]
+                if not tabs:
+                    tabs = ['Default']
+
+                for tab in tabs:
+                    if tab != 'Default':
+                        try:
+                            section.get_by_text(tab, exact=True).first.click(timeout=5000)
+                            page.wait_for_timeout(500)
+                        except Exception:
+                            pass
+
+                    cards = section.locator("div[class*='SpecScreen_property-card']").evaluate_all(
+                        """nodes => nodes.map(node => {
+                            const title = node.querySelector('[class*="SpecScreen_title"]')?.innerText?.trim() || '';
+                            const desc = node.querySelector('[class*="SpecScreen_desc"]')?.innerText?.trim() || '';
+                            return {title, desc};
+                        })"""
+                    )
+                    card_specs = []
+                    for card in cards:
+                        title = self.normalize_text(card.get('title'))
+                        values = [
+                            self.normalize_text(value)
+                            for value in str(card.get('desc') or '').split('\n')
+                            if self.normalize_text(value)
+                        ]
+                        if title and values:
+                            card_specs.append({'title': title, 'values': values})
+
+                    if card_specs:
+                        specs.append({'title': tab, 'specs': card_specs})
+
+                browser.close()
+        except Exception as e:
+            print(f"[WARN] Could not extract SUNMI rendered specs {detail_page_url}: {e}")
+            return []
+
+        return specs
 
     def extract_sunmi_static_detail(
         self,
